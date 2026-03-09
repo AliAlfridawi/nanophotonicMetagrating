@@ -8,5 +8,5 @@ miniconda.sh
 # Docs
 **/docs
 
-# Large data files (optional: remove these lines if you want to track data)
-# data/raw/*.npy
+#Track data
+data/raw/*.npy
