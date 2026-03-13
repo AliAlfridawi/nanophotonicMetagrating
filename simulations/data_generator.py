@@ -83,6 +83,16 @@ def generate_geometric_parameters(num_samples):
 
     return np.array(valid)
 
+
+def _geometry_params_nm_to_um(geometry_params: np.ndarray | list[float]) -> tuple[float, ...]:
+    geometry_nm = np.asarray(geometry_params, dtype=np.float64)
+    if geometry_nm.shape != (NUM_VARIABLES,):
+        raise ValueError(f"Expected geometry_params shape ({NUM_VARIABLES},), got {geometry_nm.shape}")
+
+    # Meep expects native Python floats for Vector3 coordinates and can choke on
+    # NumPy scalar types such as np.float32 loaded from saved geometry files.
+    return tuple(float(value) / 1000.0 for value in geometry_nm)
+
 def run_electromagnetic_simulation(geometry_params):
     """
     Runs a two-pass MEEP simulation (normalization + structure) for a
@@ -100,8 +110,8 @@ def run_electromagnetic_simulation(geometry_params):
     # ------------------------------------------------------------------ #
     # 1. UNPACK & CONVERT PARAMETERS  (nm → µm)                          #
     # ------------------------------------------------------------------ #
-    w1, w2, w3, g1, g2, g3 = geometry_params / 1000.0
-    period = w1 + w2 + w3 + g1 + g2 + g3
+    w1, w2, w3, g1, g2, g3 = _geometry_params_nm_to_um(geometry_params)
+    period = float(w1 + w2 + w3 + g1 + g2 + g3)
 
     # ------------------------------------------------------------------ #
     # 2. CELL & FIXED GEOMETRY CONSTANTS                                  #
@@ -110,14 +120,14 @@ def run_electromagnetic_simulation(geometry_params):
     dpml   = 1.000   # PML thickness:              1 µm
     air_gap = 2.000  # Air above/below structure:  2 µm
 
-    sx = period
-    sy = h + 2 * dpml + 2 * air_gap   # total cell height
-    cell = mp.Vector3(sx, sy, 0)
+    sx = float(period)
+    sy = float(h + 2 * dpml + 2 * air_gap)   # total cell height
+    cell = mp.Vector3(sx, sy, 0.0)
 
     # Vertical centre of the grating slab sits at y = 0
     # Everything below y = 0 down to the bottom PML is substrate
-    substrate_height = air_gap + dpml          # region below grating midplane
-    substrate_cy     = -(h / 2 + substrate_height / 2)
+    substrate_height = float(air_gap + dpml)          # region below grating midplane
+    substrate_cy     = float(-(h / 2 + substrate_height / 2))
 
     # ------------------------------------------------------------------ #
     # 3. MATERIALS                                                        #
@@ -129,28 +139,28 @@ def run_electromagnetic_simulation(geometry_params):
     # 4. GEOMETRY                                                         #
     # ------------------------------------------------------------------ #
     # Pillar centres — packed left-to-right inside the unit cell
-    x1 = -period / 2 + w1 / 2
-    x2 =  x1 + w1 / 2 + g1 + w2 / 2
-    x3 =  x2 + w2 / 2 + g2 + w3 / 2
+    x1 = float(-period / 2 + w1 / 2)
+    x2 = float(x1 + w1 / 2 + g1 + w2 / 2)
+    x3 = float(x2 + w2 / 2 + g2 + w3 / 2)
 
     geometry = [
         # SiO2 substrate fills everything below the grating layer
         mp.Block(
             size=mp.Vector3(sx, substrate_height, mp.inf),
-            center=mp.Vector3(0, substrate_cy, 0),
+            center=mp.Vector3(0.0, substrate_cy, 0.0),
             material=SiO2
         ),
         # Silicon pillars
-        mp.Block(mp.Vector3(w1, h, mp.inf), center=mp.Vector3(x1, 0, 0), material=Si),
-        mp.Block(mp.Vector3(w2, h, mp.inf), center=mp.Vector3(x2, 0, 0), material=Si),
-        mp.Block(mp.Vector3(w3, h, mp.inf), center=mp.Vector3(x3, 0, 0), material=Si),
+        mp.Block(mp.Vector3(w1, h, mp.inf), center=mp.Vector3(x1, 0.0, 0.0), material=Si),
+        mp.Block(mp.Vector3(w2, h, mp.inf), center=mp.Vector3(x2, 0.0, 0.0), material=Si),
+        mp.Block(mp.Vector3(w3, h, mp.inf), center=mp.Vector3(x3, 0.0, 0.0), material=Si),
     ]
 
     # ------------------------------------------------------------------ #
     # 5. SOURCE  (broadband Gaussian, TM = Ez)                           #
     # ------------------------------------------------------------------ #
     # Source sits in the air gap, just below the upper PML
-    src_y    = sy / 2 - dpml - 0.5
+    src_y    = float(sy / 2 - dpml - 0.5)
 
     fcen_src = 1.0 / 1.55   # centre frequency (1/µm), ~1550 nm
     df_src   = 0.30          # wide enough to cover 1500–1600 nm
@@ -159,8 +169,8 @@ def run_electromagnetic_simulation(geometry_params):
         mp.Source(
             mp.GaussianSource(frequency=fcen_src, fwidth=df_src),
             component=mp.Ez,                          # TM polarisation
-            center=mp.Vector3(0, src_y, 0),
-            size=mp.Vector3(sx, 0, 0)                 # plane wave across full period
+            center=mp.Vector3(0.0, src_y, 0.0),
+            size=mp.Vector3(sx, 0.0, 0.0)                 # plane wave across full period
         )
     ]
 
@@ -169,7 +179,7 @@ def run_electromagnetic_simulation(geometry_params):
     # ------------------------------------------------------------------ #
     resolution  = 20                         # pixels / µm
     pml_layers  = [mp.PML(dpml, direction=mp.Y)]
-    k_point     = mp.Vector3(0, 0, 0)        # normal incidence + periodic BCs on X
+    k_point     = mp.Vector3(0.0, 0.0, 0.0)        # normal incidence + periodic BCs on X
 
     # Flux monitor frequency axis — 11 points spanning 1500–1600 nm
     fmin    = 1.0 / 1.600   # lowest  freq  (longest λ)
@@ -180,14 +190,14 @@ def run_electromagnetic_simulation(geometry_params):
 
     # Monitor positions
     # Reflection monitor: between source and grating (just below source)
-    refl_y  = src_y - 0.1
+    refl_y  = float(src_y - 0.1)
     # Transmission monitor: in substrate, just above bottom PML
-    tran_y  = -sy / 2 + dpml + 0.5
+    tran_y  = float(-sy / 2 + dpml + 0.5)
 
-    decay_pt = mp.Vector3(0, tran_y, 0)   # field-decay check point
+    decay_pt = mp.Vector3(0.0, tran_y, 0.0)   # field-decay check point
 
-    refl_reg = mp.FluxRegion(center=mp.Vector3(0, refl_y, 0), size=mp.Vector3(sx, 0, 0))
-    tran_reg = mp.FluxRegion(center=mp.Vector3(0, tran_y, 0), size=mp.Vector3(sx, 0, 0))
+    refl_reg = mp.FluxRegion(center=mp.Vector3(0.0, refl_y, 0.0), size=mp.Vector3(sx, 0.0, 0.0))
+    tran_reg = mp.FluxRegion(center=mp.Vector3(0.0, tran_y, 0.0), size=mp.Vector3(sx, 0.0, 0.0))
 
     # ------------------------------------------------------------------ #
     # 7. PASS 1 — NORMALISATION RUN  (empty cell, no geometry)           #
