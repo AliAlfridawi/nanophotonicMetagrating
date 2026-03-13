@@ -1,4 +1,4 @@
-'''
+"""
 
     Fixed Parameters:
         Optical Wavelength: 1550 nm
@@ -27,26 +27,40 @@
         Grid Resolution: 20 pixels per um
         Boundary Conditions: Periodic boundary conditions on the left and right (X-axis) to simulate an infinite grating, and Perfectly Matched Layers (PML) on the top and bottom (Y-axis) to absorb outgoing waves without reflection
 
-'''
+"""
 
+import argparse
 import numpy as np
 from scipy.stats import qmc
-import meep as mp
 from tqdm import tqdm
 import os
 
-# Fixed constants
-WAVELENGTHS = np.linspace(1500,1600,11)
-NUM_PILLARS = 3
-MIN_FEATURE_SIZE = 50.0 #nm
-MAX_FEATURE_SIZE = 300 #nm
+try:
+    import meep as mp
+except ImportError as exc:  # pragma: no cover - import guard for non-Meep environments
+    mp = None
+    _MEEP_IMPORT_ERROR = exc
 
-# 3 Widths 3 Gaps
-NUM_VARIABLES = NUM_PILLARS * 2
+from data.contracts import (
+    MAX_FEATURE_SIZE_NM,
+    MAX_PERIOD_NM,
+    MIN_FEATURE_SIZE_NM,
+    MIN_PERIOD_NM,
+    NUM_VARIABLES,
+    WAVELENGTHS_NM,
+)
 
-# Define lower and upper bounds
-l_bounds = [MIN_FEATURE_SIZE] * NUM_VARIABLES
-u_bounds = [MAX_FEATURE_SIZE] * NUM_VARIABLES
+# Preserve legacy names used internally by this module.
+WAVELENGTHS = WAVELENGTHS_NM
+l_bounds = [MIN_FEATURE_SIZE_NM] * NUM_VARIABLES
+u_bounds = [MAX_FEATURE_SIZE_NM] * NUM_VARIABLES
+
+
+def _require_meep() -> None:
+    if mp is None:
+        raise RuntimeError(
+            "Meep is required for electromagnetic simulation. Install pymeep in your conda environment."
+        ) from _MEEP_IMPORT_ERROR
 
 
 def generate_geometric_parameters(num_samples):
@@ -59,7 +73,7 @@ def generate_geometric_parameters(num_samples):
 
     for row in scaled:
         period = row.sum()
-        if 800.0 <= period <= 1200.0:
+        if MIN_PERIOD_NM <= period <= MAX_PERIOD_NM:
             valid.append(row)
         if len(valid) == num_samples:
             break
@@ -80,6 +94,8 @@ def run_electromagnetic_simulation(geometry_params):
     Returns:
         np.array of shape (22,) — [T(11 freqs), R(11 freqs)], both normalized to [0, 1]
     """
+
+    _require_meep()
 
     # ------------------------------------------------------------------ #
     # 1. UNPACK & CONVERT PARAMETERS  (nm → µm)                          #
@@ -241,32 +257,48 @@ def run_electromagnetic_simulation(geometry_params):
 
     return np.concatenate((T, R))   # shape (22,)
 
-def main():
-    NUM_SAMPLES = 100  # Start small for testing
-    
-    # 1. Generate the inputs (X)
-    X_data = generate_geometric_parameters(NUM_SAMPLES)
-    
-    # 2. Prepare an empty array for the outputs (Y)
-    Y_data = np.zeros((NUM_SAMPLES, len(WAVELENGTHS) * 2))
-    
-    # 3. Run the simulations
+def generate_dataset(
+    num_samples: int,
+    output_dir: str = "data/raw",
+    show_progress: bool = True,
+) -> tuple[np.ndarray, np.ndarray]:
+    _require_meep()
+
+    if num_samples <= 0:
+        raise ValueError("num_samples must be a positive integer.")
+
+    x_data = generate_geometric_parameters(num_samples)
+    y_data = np.zeros((num_samples, len(WAVELENGTHS) * 2), dtype=np.float32)
+
+    iterator = range(num_samples)
+    if show_progress:
+        iterator = tqdm(iterator, desc="Simulating")
+
+    for i in iterator:
+        y_data[i] = run_electromagnetic_simulation(x_data[i])
+
+    os.makedirs(output_dir, exist_ok=True)
+    x_path = os.path.join(output_dir, "X_inputs.npy")
+    y_path = os.path.join(output_dir, "Y_outputs.npy")
+    np.save(x_path, x_data)
+    np.save(y_path, y_data)
+    return x_data, y_data
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Generate Meep simulation data for metagrating design.")
+    parser.add_argument("--samples", type=int, default=100, help="Number of valid geometries to simulate.")
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="data/raw",
+        help="Directory where X_inputs.npy and Y_outputs.npy will be saved.",
+    )
+    args = parser.parse_args()
+
     print("Running simulations...")
-    for i in tqdm(range(NUM_SAMPLES), desc="Simulating"):
-        geometry = X_data[i]
-        
-        # Call the solver
-        spectrum = run_electromagnetic_simulation(geometry)
-        
-        # Store the result
-        Y_data[i] = spectrum
-        
-    # 4. Save the dataset to disk
-    os.makedirs("data/raw", exist_ok=True)
-    np.save("data/raw/X_inputs.npy", X_data)
-    np.save("data/raw/Y_outputs.npy", Y_data)
-    
-    print("\nDataset successfully generated and saved to 'data/raw/'.")
+    generate_dataset(num_samples=args.samples, output_dir=args.output_dir, show_progress=True)
+    print(f"\nDataset successfully generated and saved to '{args.output_dir}'.")
 
 if __name__ == "__main__":
     main()

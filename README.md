@@ -1,84 +1,79 @@
 # Metagrating Inverse Design CLI
 
-A command-line interface (CLI) pipeline for the automated simulation, deep learning surrogate modeling, and inverse design of 1D silicon metagratings.
+## Project Purpose
+This project automates inverse design for 1D silicon metagratings.  
+It combines electromagnetic simulation (Meep), surrogate modeling (PyTorch), and gradient-based optimization to move from geometry sampling to optimized nanophotonic designs.
 
-## 📖 Overview
-[cite_start]Designing nanophotonic devices using conventional electromagnetic solvers like the Finite-Difference Time-Domain (FDTD) method requires significant computation time and memory consumption[cite: 104, 105]. This project bridges computational physics and artificial intelligence to bypass these bottlenecks. 
+The goal is to reduce the cost of repeated FDTD simulation by training a neural surrogate that predicts spectra quickly, then using that surrogate to search for geometries that match a target optical response.
 
-[cite_start]By generating a dataset of physical ground truths using **Meep** (an FDTD solver) and training a **PyTorch** neural network surrogate solver, this pipeline predicts the electromagnetic responses of nanophotonic structures with significantly reduced inference times[cite: 381]. Finally, it uses automatic differentiation to "inverse design" custom metagrating geometries that match a target optical spectrum.
+## Tech Used
+- **Python**
+- **Meep (pymeep)** for FDTD simulation
+- **PyTorch** for surrogate neural network training and inverse optimization
+- **NumPy / SciPy** for sampling and numerical workflows
+- **Matplotlib** for verification plots
+- **tqdm** for progress tracking
 
-## 🗂️ Project Structure
-
-\`\`\`text
-cli-metagrating-inverse-design/
+## Project Layout
+```text
+nanophotonicMetagrating/
+├── main.py                         # Unified CLI (generate/train/optimize/verify)
+├── train.py                        # Surrogate training pipeline
+├── requirements.txt
 ├── data/
-│   ├── raw/                    # Raw simulation outputs (.npy files)
-│   └── processed/              # Cleaned and normalized PyTorch tensors (.pt files)
+│   ├── contracts.py                # Shared constants + scaling helpers
+│   ├── dataset.py                  # PyTorch dataset loader
+│   ├── raw/                        # Generated X_inputs.npy, Y_outputs.npy
+│   └── processed/
 ├── models/
-│   ├── __init__.py
-│   └── surrogate_mlp.py        # Multi-Layer Perceptron architecture
+│   └── surrogate_mlp.py            # MLP architecture (6 -> ... -> 22)
 ├── optimization/
-│   ├── __init__.py
-│   └── inverse_designer.py     # Automatic differentiation logic for optimization
-├── simulations/
-│   ├── __init__.py
-│   └── data_generator.py       # Meep physics scripts using Latin Hypercube Sampling
-├── main.py                     # Main CLI entry point
-├── train.py                    # PyTorch training loop
-├── requirements.txt            # Python dependencies
-└── README.md                   # Project documentation
-\`\`\`
+│   └── inverse_designer.py         # Gradient-based geometry optimization
+└── simulations/
+    ├── data_generator.py           # Meep simulation + dataset generation
+    └── verify_design.py            # FDTD vs surrogate verification + plotting
+```
 
-## ⚙️ Installation
-
-Because electromagnetic solvers rely on complex C++ backends, it is highly recommended to manage your environment using `conda`.
-
-1. **Clone the repository:**
-   \`\`\`bash
+## Installation/Usage
+1. **Clone the repository**
+   ```bash
    git clone https://github.com/yourusername/metagrating-inverse-design.git
    cd metagrating-inverse-design
-   \`\`\`
+   ```
 
-2. **Create a Conda environment and install Meep:**
-   \`\`\`bash
+2. **Create environment and install Meep**
+   ```bash
    conda create -n inverse_design -c conda-forge pymeep
    conda activate inverse_design
-   \`\`\`
+   ```
 
-3. **Install the remaining Python dependencies:**
-   \`\`\`bash
-   pip install torch numpy scipy tqdm
-   \`\`\`
+3. **Install Python dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## 🚀 Usage
+4. **Run the pipeline**
+   ```bash
+   # Phase 1: Generate simulation dataset
+   python main.py generate --samples 1000
 
-The entire pipeline is controlled via the `main.py` entry point. 
+   # Phase 2: Train surrogate model
+   python main.py train --epochs 100 --batch-size 32
 
-### Phase 1: Data Generation
-Generate a dataset of random 1D silicon metagrating geometries and simulate their transmission and reflection spectra using Meep. This step utilizes Latin Hypercube Sampling to ensure uniform coverage of the parameter space.
+   # Phase 3: Inverse design (example target wavelength)
+   python main.py optimize --target-wavelength 1550
 
-\`\`\`bash
-python main.py generate --samples 1000
-\`\`\`
-*Outputs: `X_inputs.npy` and `Y_outputs.npy` inside the `data/raw/` directory.*
+   # Phase 4: Verify optimized geometry with FDTD
+   python main.py verify --geometry-file results/optimized_design.json --target-wavelength 1550
+   ```
 
-### Phase 2: Train the Surrogate Model
-Train a PyTorch Multi-Layer Perceptron (MLP) to map the geometric parameters to their corresponding optical spectra.
+5. **Expected outputs**
+   - `data/raw/X_inputs.npy`, `data/raw/Y_outputs.npy`
+   - `models/best_surrogate.pth`
+   - `results/optimized_design.json`
+   - `results/validation_summary.json`
+   - `results/validation_plot.png`
 
-\`\`\`bash
-python main.py train --epochs 100 --batch-size 32
-\`\`\`
-*Outputs: Trained model weights (e.g., `surrogate_model.pth`) saved to the `models/` directory.*
-
-### Phase 3: Inverse Design Optimization
-Input a target wavelength (or load a target spectrum array), and use automatic differentiation to backpropagate the gradients through the frozen neural network to discover the optimal physical geometry.
-
-\`\`\`bash
-python main.py optimize --target-wavelength 1550
-\`\`\`
-*Outputs: The optimal geometric parameters (pillar widths and gaps) printed directly to the terminal.*
-
-## 🛠️ Built With
-* **[Meep](https://meep.readthedocs.io/):** Open-source FDTD simulation software.
-* **[PyTorch](https://pytorch.org/):** Deep learning tensor library.
-* **[SciPy](https://scipy.org/):** Scientific computing library used for Latin Hypercube Sampling.
+## Author
+**Alfri**  
+Nanophotonics + AI Engineering Project
