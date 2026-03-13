@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Metagrating Inverse Design CLI
 
 ## Project Purpose
@@ -77,3 +78,7 @@ nanophotonicMetagrating/
 ## Author
 **Alfri**  
 Nanophotonics + AI Engineering Project
+=======
+# Building a small project to learn about inverse design!
+Still in progress, will update readme once finished
+>>>>>>> 215e30fa5eb889099b05c8d5c8e5939ed8de7be8
